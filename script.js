@@ -63,7 +63,8 @@ class LearningDashboard {
                 throw new Error(`Failed to fetch courses: ${response.statusText}`);
             }
     
-            this.courses = await response.json();
+            const data = await response.json();
+            this.courses = data.courses || data;
     
             this.renderDashboard();
             this.renderAllCourses();
@@ -79,7 +80,6 @@ class LearningDashboard {
             this.setLoading(false);
         }
     }
-
     renderDashboard() {
         const container = document.getElementById('recentCoursesContainer');
 
