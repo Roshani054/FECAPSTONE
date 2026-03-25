@@ -1,6 +1,6 @@
 class LearningDashboard {
     constructor() {
-        this.apiUrl = localStorage.getItem('apiUrl') || 'http://localhost:5000/api/courses';
+        this.apiUrl = localStorage.getItem('apiUrl') || 'http://127.0.0.1:5000/api/courses';
         this.courses = [];
         this.init();
     }
@@ -54,24 +54,31 @@ class LearningDashboard {
     }
 
     async fetchCourses() {
-  this.setLoading(true);
-
-  try {
-    this.courses = JSON.parse(localStorage.getItem("courses")) || [];
-
-    this.renderDashboard();
-    this.renderAllCourses();
-    this.updateStatistics();
-    this.updateProgressChart();
-
-  } catch (error) {
-    console.error("Local load failed:", error);
-    this.courses = [];
-    this.renderEmptyState();
-  } finally {
-    this.setLoading(false);
-  }
-}
+        this.setLoading(true);
+    
+        try {
+            const response = await fetch(this.apiUrl);
+    
+            if (!response.ok) {
+                throw new Error(`Failed to fetch courses: ${response.statusText}`);
+            }
+    
+            this.courses = await response.json();
+    
+            this.renderDashboard();
+            this.renderAllCourses();
+            this.updateStatistics();
+            this.updateProgressChart();
+    
+        } catch (error) {
+            console.error("Fetch failed:", error);
+            this.courses = [];
+            this.renderEmptyState();
+            this.showMessage(`Failed to load courses: ${error.message}`, 'error');
+        } finally {
+            this.setLoading(false);
+        }
+    }
 
     renderDashboard() {
         const container = document.getElementById('recentCoursesContainer');
@@ -233,21 +240,21 @@ class LearningDashboard {
 
     async handleAddCourse(e) {
         e.preventDefault();
-
+    
         const courseData = {
             name: document.getElementById('courseName').value.trim(),
             description: document.getElementById('courseDescription').value.trim(),
             target_date: document.getElementById('courseTargetDate').value,
             status: document.getElementById('courseStatus').value
         };
-
+    
         if (!this.validateForm(courseData)) {
             this.showMessage('Please fill in all required fields', 'error');
             return;
         }
-
+    
         this.setLoading(true);
-
+    
         try {
             const response = await fetch(this.apiUrl, {
                 method: 'POST',
@@ -256,19 +263,15 @@ class LearningDashboard {
                 },
                 body: JSON.stringify(courseData)
             });
-
+    
             if (!response.ok) {
                 throw new Error(`Failed to add course: ${response.statusText}`);
             }
-
-            const newCourse = await response.json();
-            localStorage.setItem("courses", JSON.stringify(this.courses));
-
-            this.renderDashboard();
-            this.renderAllCourses();
-            this.updateStatistics();
-            this.updateProgressChart();
-
+    
+            await response.json();
+    
+            await this.fetchCourses();
+    
             this.closeAddCourseModal();
             this.showMessage('Course added successfully!', 'success');
         } catch (error) {
@@ -299,7 +302,7 @@ class LearningDashboard {
 
     async handleEditCourse(e) {
         e.preventDefault();
-
+    
         const courseId = document.getElementById('editCourseId').value;
         const courseData = {
             name: document.getElementById('editCourseName').value.trim(),
@@ -307,14 +310,14 @@ class LearningDashboard {
             target_date: document.getElementById('editCourseTargetDate').value,
             status: document.getElementById('editCourseStatus').value
         };
-
+    
         if (!this.validateForm(courseData)) {
             this.showMessage('Please fill in all required fields', 'error');
             return;
         }
-
+    
         this.setLoading(true);
-
+    
         try {
             const response = await fetch(`${this.apiUrl}/${courseId}`, {
                 method: 'PUT',
@@ -323,22 +326,14 @@ class LearningDashboard {
                 },
                 body: JSON.stringify(courseData)
             });
-
+    
             if (!response.ok) {
                 throw new Error(`Failed to update course: ${response.statusText}`);
             }
-
-            const updatedCourse = await response.json();
-            const index = this.courses.findIndex(c => c.id === parseInt(courseId));
-            if (index !== -1) {
-                this.courses[index] = updatedCourse;
-            }
-
-            this.renderDashboard();
-            this.renderAllCourses();
-            this.updateStatistics();
-            this.updateProgressChart();
-
+    
+            await response.json();
+            await this.fetchCourses();
+    
             this.closeEditCourseModal();
             this.showMessage('Course updated successfully!', 'success');
         } catch (error) {
@@ -353,25 +348,19 @@ class LearningDashboard {
         if (!confirm('Are you sure you want to delete this course?')) {
             return;
         }
-
+    
         this.setLoading(true);
-
+    
         try {
             const response = await fetch(`${this.apiUrl}/${courseId}`, {
                 method: 'DELETE'
             });
-
+    
             if (!response.ok) {
                 throw new Error(`Failed to delete course: ${response.statusText}`);
             }
-
-            this.courses = this.courses.filter(c => c.id !== courseId);
-
-            this.renderDashboard();
-            this.renderAllCourses();
-            this.updateStatistics();
-            this.updateProgressChart();
-
+    
+            await this.fetchCourses();
             this.showMessage('Course deleted successfully!', 'success');
         } catch (error) {
             console.error('Error deleting course:', error);
@@ -380,7 +369,6 @@ class LearningDashboard {
             this.setLoading(false);
         }
     }
-
     validateForm(data) {
         return data.name && data.description && data.target_date && data.status;
     }
@@ -406,19 +394,20 @@ class LearningDashboard {
         }
     }
 
-    renderEmptyState(pageId) {
-        const container = pageId === 'dashboardPage'
-            ? document.getElementById('recentCoursesContainer')
-            : document.getElementById('allCoursesContainer');
-
-        container.innerHTML = `
+    renderEmptyState() {
+        const emptyHtml = `
             <div class="empty-state" style="grid-column: 1/-1; padding: 40px 20px;">
                 <div class="empty-state-icon">⚠️</div>
                 <p class="empty-state-text">Failed to load courses. Please check your API connection.</p>
             </div>
         `;
+    
+        const recent = document.getElementById('recentCoursesContainer');
+        const all = document.getElementById('allCoursesContainer');
+    
+        if (recent) recent.innerHTML = emptyHtml;
+        if (all) all.innerHTML = emptyHtml;
     }
-
     saveSettings() {
         const apiUrl = document.getElementById('apiUrl').value.trim();
 
@@ -435,4 +424,5 @@ class LearningDashboard {
     }
 }
 
-const dashboard = new LearningDashboard();
+window.dashboard = new LearningDashboard();
+
